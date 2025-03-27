@@ -1,57 +1,59 @@
-import express from "express";
-import { Telegraf } from "telegraf";
-import { config } from "dotenv";
-import UserSchema from "./models/User.js";
-import db from "./db.js";
+import express from 'express';
+import { Telegraf } from 'telegraf';
+import { config } from 'dotenv';
 config();
 
-// Инициализируем Express
 const app = express();
 
-// Инициализируем Telegraf
 const bot = new Telegraf(process.env.TOKEN);
 
-// Подключаемся к базе данных
-db().catch((err) => console.log(err));
-
-// Обработчик команды /start
 bot.start(async (ctx) => {
   const userId = ctx.message.from.id;
   const first_name = ctx.message.from.first_name;
   const username = ctx.message.from.username;
 
   try {
-    const user = await UserSchema.findOne({ userId });
-
-    if (user) {
+    const getResponse = await fetch(
+      `${process.env.API_URI}/get-user/${userId}`
+    );
+    const getData = await getResponse.json();
+    
+    if (getData.record) {
       return await ctx.reply("You've already registered");
     }
 
-    await new UserSchema({ userId, first_name, username }).save();
-    await ctx.reply("You're successfully registered");
+    const createResponse = await fetch(`${process.env.API_URI}/register-user`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ userId, first_name, username }),
+    });
+    const createData = await createResponse.json();
+
+    if (createData.message === 'User record has got successfully created') {
+      return await ctx.reply("You're successfully registered");
+    }
   } catch (err) {
     console.log(err);
-    return await ctx.reply("Error while registering user");
+    return await ctx.reply('Error while registering user');
   }
 });
 
-// Настройка вебхука для Telegram
-app.post("/webhook", express.json(), (req, res) => {
-  bot.handleUpdate(req.body, res); // Обрабатываем обновления от Telegram
-  res.send("OK");
+app.post('/webhook', express.json(), (req, res) => {
+  bot.handleUpdate(req.body, res);
+  res.send('OK');
 });
 
-// Простой health check для Cloud Run
-app.get("/health", (req, res) => {
-  res.status(200).send("OK");
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
 });
 
-// Настроим прослушку порта, который нужен для Cloud Run
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
-  bot.launch(); // Запуск бота
+  bot.launch();
 });
 
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
